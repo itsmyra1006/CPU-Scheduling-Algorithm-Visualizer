@@ -1,0 +1,5 @@
+{
+  "name": "CPU Scheduling Algorithm Visualizer",
+  "description": "An interactive educational tool to visualize and compare common CPU scheduling algorithms like FCFS, Preemptive SJF (SRTF), and Round Robin. Add processes, run the simulation, and analyze the performance with detailed Gantt charts and metrics.",
+  "requestFramePermissions": []
+}
