@@ -37,7 +37,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ chartData, totalTime }) => {
           <button
             key={index}
             onClick={() => handleSegmentClick(entry)}
-            className={`absolute h-full flex items-center justify-center text-white text-xs font-bold ${entry.color} hover:opacity-80 transition-opacity duration-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 z-10`}
+            className={`absolute h-full grid place-items-center text-white text-xs font-bold ${entry.color} hover:opacity-80 transition-opacity duration-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 z-10`}
             style={{
               left: `${(entry.start / displayTime) * 100}%`,
               width: `${((entry.end - entry.start) / displayTime) * 100}%`,
@@ -45,7 +45,7 @@ const GanttChart: React.FC<GanttChartProps> = ({ chartData, totalTime }) => {
             }}
             aria-label={`Process ${entry.processName}, from time ${entry.start} to ${entry.end}`}
           >
-            {entry.processName}
+            <span>{entry.processName}</span>
           </button>
         ))}
       </div>

@@ -52,8 +52,12 @@ const OutputSection: React.FC<OutputSectionProps> = ({ results }) => (
             <ResultsTable processes={result.processes} />
           </div>
           <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 text-center">
-            <p><span className="font-semibold text-slate-600 dark:text-slate-300">Avg. Waiting Time:</span> {result.avgWaitingTime.toFixed(2)}</p>
-            <p><span className="font-semibold text-slate-600 dark:text-slate-300">Avg. Turnaround Time:</span> {result.avgTurnaroundTime.toFixed(2)}</p>
+            <div className="inline-grid grid-cols-[auto_auto] gap-x-4 gap-y-1">
+              <span className="font-semibold text-slate-600 dark:text-slate-300 text-right">Avg. Waiting Time:</span>
+              <span className="text-left">{result.avgWaitingTime.toFixed(2)}</span>
+              <span className="font-semibold text-slate-600 dark:text-slate-300 text-right">Avg. Turnaround Time:</span>
+              <span className="text-left">{result.avgTurnaroundTime.toFixed(2)}</span>
+            </div>
           </div>
         </div>
       ))}
