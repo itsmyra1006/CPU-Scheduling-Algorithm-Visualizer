@@ -428,19 +428,6 @@ const App: React.FC = () => {
         </div>
       </main>
       
-      <AnimatePresence>
-       {!isPresentationMode && (
-          <motion.footer 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="text-center mt-12 text-slate-500 dark:text-slate-400 text-sm"
-          >
-            <p>Built with React, TypeScript, and Tailwind CSS.</p>
-          </motion.footer>
-        )}
-      </AnimatePresence>
-
       <button
         onClick={toggleTheme}
         className="fixed top-4 right-4 z-50 p-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-full text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 hover:text-fuchsia-600 dark:hover:text-fuchsia-400 transition-all shadow-lg active:scale-95"

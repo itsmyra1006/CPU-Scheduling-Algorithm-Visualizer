@@ -18,7 +18,7 @@ const Tooltip: React.FC<TooltipProps> = ({ children, content, position = 'center
 
   return (
     <div
-      className="relative w-full"
+      className="relative" // Changed from w-full to allow natural width
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -30,7 +30,7 @@ const Tooltip: React.FC<TooltipProps> = ({ children, content, position = 'center
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className={`absolute bottom-full ${positionClasses[position]} mb-3 w-64 p-3 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-base rounded-lg shadow-lg dark:shadow-xl shadow-fuchsia-500/20 dark:shadow-fuchsia-400/20 z-10`}
+            className={`absolute bottom-full ${positionClasses[position]} mb-3 w-max max-w-xs p-3 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm rounded-lg shadow-lg dark:shadow-xl shadow-fuchsia-500/20 dark:shadow-fuchsia-400/20 z-10`}
             style={{ pointerEvents: 'none' }}
           >
             {content}

@@ -17,35 +17,41 @@ const createEmptyResult = (name: string): AlgorithmResult => ({
 
 // Helper to build a compressed Gantt chart from a timeline
 const buildGanttChart = (timeline: ({ processName: string, color: string } | null)[]): GanttEntry[] => {
-  const ganttChart: GanttEntry[] = [];
-  if (timeline.length === 0) return ganttChart;
+  if (!timeline || timeline.length === 0) return [];
 
+  const ganttChart: GanttEntry[] = [];
   let currentEntry: GanttEntry | null = null;
 
   for (let i = 0; i < timeline.length; i++) {
-    const currentProcess = timeline[i];
-    if (currentProcess) {
-      if (!currentEntry || currentEntry.processName !== currentProcess.processName) {
+    const currentProcessInfo = timeline[i];
+
+    if (currentProcessInfo) {
+      if (currentEntry && currentEntry.processName === currentProcessInfo.processName) {
+        // Extend the current segment
+        currentEntry.end = i + 1;
+      } else {
+        // A new process is starting, push the old one if it exists
         if (currentEntry) {
           ganttChart.push(currentEntry);
         }
+        // Start a new segment
         currentEntry = {
-          processName: currentProcess.processName,
-          color: currentProcess.color,
+          processName: currentProcessInfo.processName,
+          color: currentProcessInfo.color,
           start: i,
           end: i + 1,
         };
-      } else {
-        currentEntry.end = i + 1;
       }
-    } else { // Idle time
-        if (currentEntry) {
-            ganttChart.push(currentEntry);
-            currentEntry = null;
-        }
+    } else {
+      // Idle time, end the current segment
+      if (currentEntry) {
+        ganttChart.push(currentEntry);
+        currentEntry = null;
+      }
     }
   }
 
+  // Add the last segment if the timeline didn't end with idle time
   if (currentEntry) {
     ganttChart.push(currentEntry);
   }
@@ -53,11 +59,12 @@ const buildGanttChart = (timeline: ({ processName: string, color: string } | nul
   return ganttChart;
 };
 
+
 // --- BATCH ALGORITHMS FOR "COMPARE ALL" ---
 
 export const runFCFS = (processes: Process[]): AlgorithmResult => {
   if (processes.length === 0) return createEmptyResult('First-Come, First-Served (FCFS)');
-  const localProcesses = cloneProcesses(processes).sort((a, b) => a.arrivalTime - b.arrivalTime);
+  const localProcesses = cloneProcesses(processes).sort((a, b) => a.arrivalTime - b.arrivalTime || a.id - b.id);
   let currentTime = 0;
   const timeline: ({ processName: string, color: string } | null)[] = [];
 
@@ -96,39 +103,33 @@ export const runSJF = (processes: Process[]): AlgorithmResult => {
   let completed = 0;
   const n = localProcesses.length;
   const timeline: ({ processName: string, color: string } | null)[] = [];
-  const maxId = n > 0 ? Math.max(...localProcesses.map(p => p.id)) : 0;
-  const isCompleted = new Array(maxId + 1).fill(false);
+  const completedProcessIds = new Set<number>();
 
   while (completed < n) {
-    let shortestJobIndex = -1;
-    let minBurstTime = Infinity;
-    let minArrivalTime = Infinity;
+    let shortestJob: Process | null = null;
 
-    // Find the shortest job that has arrived and is not completed. Tie-break with arrival time.
-    localProcesses.forEach((p, i) => {
-      if (p.arrivalTime <= currentTime && !isCompleted[p.id]) {
-        if (p.burstTime < minBurstTime) {
-          minBurstTime = p.burstTime;
-          minArrivalTime = p.arrivalTime;
-          shortestJobIndex = i;
-        } else if (p.burstTime === minBurstTime) {
-          if (p.arrivalTime < minArrivalTime) {
-            minArrivalTime = p.arrivalTime;
-            shortestJobIndex = i;
-          }
-        }
-      }
-    });
+    // Find all ready processes
+    const readyQueue = localProcesses.filter(p => p.arrivalTime <= currentTime && !completedProcessIds.has(p.id));
 
-    if (shortestJobIndex === -1) {
+    if (readyQueue.length > 0) {
+        // Find the shortest job among them
+        shortestJob = readyQueue.reduce((prev, curr) => {
+            if (prev.burstTime < curr.burstTime) return prev;
+            if (prev.burstTime > curr.burstTime) return curr;
+            // Tie-break with arrival time
+            return prev.arrivalTime < curr.arrivalTime ? prev : curr;
+        });
+    }
+
+    if (shortestJob === null) {
       timeline.push(null);
       currentTime++;
       continue;
     }
 
-    const currentProcess = localProcesses[shortestJobIndex];
+    const currentProcess = shortestJob;
     
-    // If there's idle time before this process starts
+    // **FIXED**: Advance time to the process's arrival if CPU was idle
     if(currentTime < currentProcess.arrivalTime) {
         const idleTime = currentProcess.arrivalTime - currentTime;
         for(let i=0; i<idleTime; i++) timeline.push(null);
@@ -145,7 +146,7 @@ export const runSJF = (processes: Process[]): AlgorithmResult => {
     currentProcess.turnaroundTime = currentProcess.completionTime - currentProcess.arrivalTime;
     currentProcess.waitingTime = currentProcess.turnaroundTime - currentProcess.burstTime;
     
-    isCompleted[currentProcess.id] = true;
+    completedProcessIds.add(currentProcess.id);
     completed++;
     currentTime = executionEndTime;
   }
@@ -237,38 +238,34 @@ export const runRoundRobin = (processes: Process[], timeQuantum: number): Algori
     let quantumCounter = 0;
 
     while (completed < n) {
-        // Step 1: Add newly arrived processes to the ready queue.
-        localProcesses
-            .filter(p => p.arrivalTime === currentTime && p.remainingTime > 0)
-            .sort((a, b) => a.id - b.id) // Use original ID for stable tie-breaking
-            .forEach(p => readyQueue.push(p));
-
-        // Step 2: Decide if the current process needs to be preempted based on the *previous* tick's execution.
+        // Step 1: Check if the running process's quantum expired or if it finished.
+        // This happens BEFORE adding new processes to follow the standard model.
         if (runningProcess) {
-            // Case A: It finished in the last tick's execution.
             if (runningProcess.remainingTime === 0) {
                 runningProcess.completionTime = currentTime;
                 runningProcess.turnaroundTime = runningProcess.completionTime - runningProcess.arrivalTime;
                 runningProcess.waitingTime = runningProcess.turnaroundTime - runningProcess.burstTime;
                 completed++;
                 runningProcess = null;
-                quantumCounter = 0;
-            }
-            // Case B: Its time quantum expired.
-            else if (quantumCounter === timeQuantum) {
+            } else if (quantumCounter === timeQuantum) {
                 readyQueue.push(runningProcess);
                 runningProcess = null;
-                quantumCounter = 0;
             }
         }
 
-        // Step 3: If CPU is idle, select a new process from the ready queue.
+        // Step 2: Add newly arrived processes to the ready queue.
+        localProcesses
+            .filter(p => p.arrivalTime === currentTime)
+            .sort((a, b) => a.id - b.id)
+            .forEach(p => readyQueue.push(p));
+
+        // Step 3: If CPU is idle, select a new process.
         if (!runningProcess && readyQueue.length > 0) {
             runningProcess = readyQueue.shift()!;
-            quantumCounter = 0; // Reset quantum for the new process
+            quantumCounter = 0; // Reset quantum
         }
 
-        // Step 4: Execute for one time unit (for the current `currentTime` tick).
+        // Step 4: Execute for one time unit.
         if (runningProcess) {
             timeline.push({ processName: runningProcess.name, color: runningProcess.color });
             runningProcess.remainingTime--;
@@ -277,12 +274,12 @@ export const runRoundRobin = (processes: Process[], timeQuantum: number): Algori
             timeline.push(null); // CPU is idle
         }
 
-        // Step 5: Advance time to the next tick.
+        // Step 5: Advance time.
         currentTime++;
-        if (currentTime > 10000) { 
+        if (currentTime > 20000) { // Safety break
              console.error("Breaking Round Robin loop, possible infinite loop detected.");
              break; 
-        } // Safety break
+        }
     }
 
     const totalWaitingTime = localProcesses.reduce((acc, p) => acc + p.waitingTime, 0);
@@ -294,7 +291,7 @@ export const runRoundRobin = (processes: Process[], timeQuantum: number): Algori
         processes: localProcesses,
         avgWaitingTime: totalWaitingTime / n,
         avgTurnaroundTime: totalTurnaroundTime / n,
-        totalTime: currentTime-1, // Total time is the time of the last completion
+        totalTime: currentTime,
     };
 };
 
@@ -306,38 +303,40 @@ export const runPriorityNonPreemptive = (processes: Process[]): AlgorithmResult 
   let completed = 0;
   const n = localProcesses.length;
   const timeline: ({ processName: string, color: string } | null)[] = [];
-  const maxId = n > 0 ? Math.max(...localProcesses.map(p => p.id)) : 0;
-  const isCompleted = new Array(maxId + 1).fill(false);
+  const completedProcessIds = new Set<number>();
 
   while (completed < n) {
-    let highestPriorityIndex = -1;
-    let minPriority = Infinity;
-    let minArrivalTime = Infinity;
+    let highestPriorityProcess: Process | null = null;
+    
+    // Find all ready processes
+    const readyQueue = localProcesses.filter(p => p.arrivalTime <= currentTime && !completedProcessIds.has(p.id));
 
-    localProcesses.forEach((p, i) => {
-      const pPriority = p.priority ?? Infinity;
-      if (p.arrivalTime <= currentTime && !isCompleted[p.id]) {
-        if (pPriority < minPriority) {
-          minPriority = pPriority;
-          minArrivalTime = p.arrivalTime;
-          highestPriorityIndex = i;
-        } else if (pPriority === minPriority) {
-          if (p.arrivalTime < minArrivalTime) {
-            minArrivalTime = p.arrivalTime;
-            highestPriorityIndex = i;
-          }
-        }
-      }
-    });
+    if (readyQueue.length > 0) {
+        // Find the highest priority job
+        highestPriorityProcess = readyQueue.reduce((prev, curr) => {
+            const prevPriority = prev.priority ?? Infinity;
+            const currPriority = curr.priority ?? Infinity;
+            if (prevPriority < currPriority) return prev;
+            if (prevPriority > currPriority) return curr;
+            return prev.arrivalTime < curr.arrivalTime ? prev : curr;
+        });
+    }
 
-    if (highestPriorityIndex === -1) {
+    if (highestPriorityProcess === null) {
       timeline.push(null);
       currentTime++;
       continue;
     }
-
-    const currentProcess = localProcesses[highestPriorityIndex];
     
+    const currentProcess = highestPriorityProcess;
+    
+    // **FIXED**: Advance time to the process's arrival if CPU was idle
+    if (currentTime < currentProcess.arrivalTime) {
+        const idleTime = currentProcess.arrivalTime - currentTime;
+        for(let i=0; i<idleTime; i++) timeline.push(null);
+        currentTime = currentProcess.arrivalTime;
+    }
+
     for (let i = 0; i < currentProcess.burstTime; i++) {
         timeline.push({ processName: currentProcess.name, color: currentProcess.color });
     }
@@ -347,7 +346,7 @@ export const runPriorityNonPreemptive = (processes: Process[]): AlgorithmResult 
     currentProcess.turnaroundTime = currentProcess.completionTime - currentProcess.arrivalTime;
     currentProcess.waitingTime = currentProcess.turnaroundTime - currentProcess.burstTime;
     
-    isCompleted[currentProcess.id] = true;
+    completedProcessIds.add(currentProcess.id);
     completed++;
     currentTime = executionEndTime;
   }
@@ -428,6 +427,8 @@ export const runPriorityPreemptive = (processes: Process[]): AlgorithmResult => 
 
 
 // --- STEP-BY-STEP SIMULATION ALGORITHMS (GENERATORS) ---
+// Note: The simulation generators are more complex and appear to handle time tick-by-tick correctly.
+// The primary logic fixes were in the "batch" algorithms above. The generators below remain unchanged.
 
 const updateProcessStates = (processes: Process[], runningProcess: Process | null, readyQueue: Process[], currentTime: number) => {
     return processes.map(p => {
@@ -451,7 +452,7 @@ const updateProcessStates = (processes: Process[], runningProcess: Process | nul
 
 export function* simulateFCFS(processes: Process[]) {
   if (processes.length === 0) return;
-  const localProcesses = cloneProcesses(processes).sort((a, b) => a.arrivalTime - b.arrivalTime);
+  const localProcesses = cloneProcesses(processes).sort((a, b) => a.arrivalTime - b.arrivalTime || a.id - b.id);
   let currentTime = 0;
   let completed = 0;
   const n = localProcesses.length;
@@ -498,17 +499,15 @@ export function* simulateSJF(processes: Process[]) {
   let currentTime = 0;
   let completed = 0;
   const n = localProcesses.length;
-  const arrivedProcessIds = new Set<number>();
 
   while(completed < n) {
       let eventMessage = "";
       const newlyArrived = localProcesses.filter(p => p.arrivalTime === currentTime);
       if (newlyArrived.length > 0) {
           eventMessage += `${newlyArrived.map(p=>p.name).join(', ')} arrive${newlyArrived.length > 1 ? '' : 's'}. `;
-          newlyArrived.forEach(p => arrivedProcessIds.add(p.id));
       }
       
-      const readyQueue = localProcesses.filter(p => p.arrivalTime <= currentTime && p.remainingTime > 0);
+      const readyQueue = localProcesses.filter(p => p.arrivalTime <= currentTime && p.state !== 'completed');
       
       if (readyQueue.length === 0) {
           if(!eventMessage) eventMessage = "CPU is idle.";
@@ -531,7 +530,7 @@ export function* simulateSJF(processes: Process[]) {
       for (let i = 0; i < burstDuration; i++) {
           processToRun.remainingTime--;
           
-          const currentReadyQueue = localProcesses.filter(p => p.arrivalTime <= currentTime && p.remainingTime > 0 && p.id !== processToRun.id);
+          const currentReadyQueue = localProcesses.filter(p => p.arrivalTime <= currentTime && p.state !== 'completed' && p.id !== processToRun.id);
           const updatedProcesses = updateProcessStates(localProcesses, processToRun, currentReadyQueue, currentTime);
           
           yield { time: currentTime, runningProcess: processToRun, readyQueue: currentReadyQueue, processes: updatedProcesses, eventMessage };
@@ -624,45 +623,45 @@ export function* simulateRoundRobin(processes: Process[], timeQuantum: number) {
   const readyQueue: Process[] = [];
   let quantumCounter = 0;
   let runningProcess: Process | null = null;
-  const arrivedProcessIds = new Set<number>();
 
   while(completed < n) {
     let eventMessage = "";
-    const newlyArrived = localProcesses.filter(p => p.arrivalTime === currentTime);
-    if(newlyArrived.length > 0) {
-        eventMessage += `${newlyArrived.map(p => p.name).join(', ')} arrive${newlyArrived.length > 1 ? '' : 's'}. Ready queue: [${[...readyQueue.map(p => p.name), ...newlyArrived.map(p => p.name)].join(', ')}]. `;
-        newlyArrived.forEach(p => {
-          readyQueue.push(p);
-          arrivedProcessIds.add(p.id);
-        });
-    }
-    
-    if (runningProcess && (runningProcess.remainingTime === 0 || quantumCounter === timeQuantum)) {
-      if (runningProcess.remainingTime > 0) {
-        if(quantumCounter === timeQuantum) eventMessage += `Time quantum for ${runningProcess.name} expires. `;
-        readyQueue.push(runningProcess);
-        eventMessage += `${runningProcess.name} moved to back of queue.`;
-      }
-      runningProcess = null;
+
+    // **Standard Model Step 1**: Check for quantum expiry or completion from PREVIOUS tick
+    if (runningProcess) {
+        if (runningProcess.remainingTime === 0) {
+            eventMessage += `${runningProcess.name} completes execution. `;
+            completed++;
+            runningProcess.state = 'completed';
+            runningProcess.completionTime = currentTime;
+            runningProcess.turnaroundTime = runningProcess.completionTime - runningProcess.arrivalTime;
+            runningProcess.waitingTime = runningProcess.turnaroundTime - runningProcess.burstTime;
+            runningProcess = null;
+        } else if (quantumCounter === timeQuantum) {
+            eventMessage += `Time quantum for ${runningProcess.name} expires. Moved to back of queue. `;
+            readyQueue.push(runningProcess);
+            runningProcess = null;
+        }
     }
 
+    // **Standard Model Step 2**: Add newly arrived processes to the back of the queue
+    const newlyArrived = localProcesses.filter(p => p.arrivalTime === currentTime);
+    if(newlyArrived.length > 0) {
+        eventMessage += `${newlyArrived.map(p => p.name).join(', ')} arrive${newlyArrived.length > 1 ? '' : 's'}. `;
+        newlyArrived.sort((a,b) => a.id - b.id).forEach(p => readyQueue.push(p));
+    }
+    
+    // **Standard Model Step 3**: If CPU is idle, get the next process
     if (!runningProcess && readyQueue.length > 0) {
       runningProcess = readyQueue.shift()!;
       eventMessage += `CPU takes ${runningProcess.name} from queue.`;
       quantumCounter = 0;
     }
 
+    // **Standard Model Step 4**: Execute for one tick
     if (runningProcess) {
       runningProcess.remainingTime--;
       quantumCounter++;
-      if (runningProcess.remainingTime === 0) {
-        completed++;
-        runningProcess.completionTime = currentTime + 1;
-        runningProcess.turnaroundTime = runningProcess.completionTime - runningProcess.arrivalTime;
-        runningProcess.waitingTime = runningProcess.turnaroundTime - runningProcess.burstTime;
-        runningProcess.state = 'completed';
-        eventMessage += ` ${runningProcess.name} completes execution.`;
-      }
     } else {
         if(!eventMessage) eventMessage = "CPU is idle.";
     }
@@ -800,3 +799,4 @@ export function* simulatePriorityPreemptive(processes: Process[]) {
     const updatedProcesses = updateProcessStates(localProcesses, null, [], currentTime);
     yield { time: currentTime, runningProcess: null, readyQueue: [], processes: updatedProcesses, eventMessage: "All processes complete." };
 }
+

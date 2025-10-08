@@ -74,7 +74,7 @@ const ProcessQueueTable: React.FC<{ processes: Process[], runningProcessName: st
                             <td className={`p-3 font-bold ${p.color.replace('bg-', 'text-')}`}>{p.name}</td>
                             <td className="p-3">{p.arrivalTime}</td>
                             <td className="p-3">{p.burstTime}</td>
-                            <td className="p-3">{p.priority}</td>
+                            <td className="p-3">{p.priority ?? 'N/A'}</td>
                             <td className="p-3">{p.remainingTime}</td>
                             <td className="p-3"><StateBadge state={p.state} /></td>
                             <td className="p-3"><ProgressBar progress={progress} color={p.color} /></td>
@@ -147,11 +147,12 @@ const LiveSimulationDisplay: React.FC<LiveSimulationDisplayProps> = ({ state, is
   const { algorithmName, time, runningProcessName, readyQueue, ganttChart, processes, eventLog } = state;
   const runningProcess = processes.find(p => p.name === runningProcessName);
 
-  const completedProcesses = processes.filter(p => p.state === 'completed');
-  const totalWaitingTime = completedProcesses.reduce((acc, p) => acc + p.waitingTime, 0);
-  const totalTurnaroundTime = completedProcesses.reduce((acc, p) => acc + p.turnaroundTime, 0);
-  const avgWaitingTime = completedProcesses.length > 0 ? totalWaitingTime / completedProcesses.length : 0;
-  const avgTurnaroundTime = completedProcesses.length > 0 ? totalTurnaroundTime / completedProcesses.length : 0;
+  // **FIXED**: Calculate averages based on all processes once simulation is complete, not just 'completed' ones.
+  const processesForFinalCalc = !isSimulating ? processes : processes.filter(p => p.state === 'completed');
+  const totalWaitingTime = processesForFinalCalc.reduce((acc, p) => acc + p.waitingTime, 0);
+  const totalTurnaroundTime = processesForFinalCalc.reduce((acc, p) => acc + p.turnaroundTime, 0);
+  const avgWaitingTime = processesForFinalCalc.length > 0 ? totalWaitingTime / processesForFinalCalc.length : 0;
+  const avgTurnaroundTime = processesForFinalCalc.length > 0 ? totalTurnaroundTime / processesForFinalCalc.length : 0;
 
   return (
     <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-md">
@@ -213,7 +214,7 @@ const LiveSimulationDisplay: React.FC<LiveSimulationDisplayProps> = ({ state, is
       
       {eventLog && eventLog.length > 0 && <SchedulerLog log={eventLog} />}
 
-      {!isSimulating && processes.every(p => p.state === 'completed') && (
+      {!isSimulating && (
         <div className="mt-8 pt-6 border-t-2 border-slate-200 dark:border-slate-700">
             <h3 className="text-xl font-bold text-center text-fuchsia-700 dark:text-fuchsia-400 mb-4">Final Results</h3>
             <ResultsTable processes={processes} />
@@ -232,3 +233,4 @@ const LiveSimulationDisplay: React.FC<LiveSimulationDisplayProps> = ({ state, is
 };
 
 export default LiveSimulationDisplay;
+

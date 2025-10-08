@@ -14,6 +14,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ processes }) => (
           <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">ID</th>
           <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">AT</th>
           <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">BT</th>
+          <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">Priority</th>
           <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">CT</th>
           <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">TAT</th>
           <th className="p-2 font-semibold text-slate-600 dark:text-slate-300">WT</th>
@@ -25,6 +26,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ processes }) => (
             <td className={`p-2 font-bold ${p.color.replace('bg-', 'text-')}`}>{p.name}</td>
             <td className="p-2">{p.arrivalTime}</td>
             <td className="p-2">{p.burstTime}</td>
+            <td className="p-2">{p.priority ?? 'N/A'}</td>
             <td className="p-2">{p.completionTime}</td>
             <td className="p-2">{p.turnaroundTime}</td>
             <td className="p-2">{p.waitingTime}</td>
